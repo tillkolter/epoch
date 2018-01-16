@@ -39,7 +39,9 @@
 -include("common.hrl").
 -include("blocks.hrl").
 -include("core_txs.hrl").
+-include_lib("parse_trans/include/exprecs.hrl").
 
+-export_records([block]).
 
 -define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).
 

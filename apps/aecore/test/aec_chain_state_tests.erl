@@ -64,12 +64,14 @@
 basic_access_test_() ->
     {setup,
      fun() ->
+             aec_test_utils:start_chain_db(),
              aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             aec_test_utils:unmock_genesis()
+             aec_test_utils:unmock_genesis(),
+             aec_test_utils:stop_chain_db()
      end,
      [ {"Access for header chain", fun basic_access_test_header_chain/0}
      , {"Access for block chain", fun basic_access_test_block_chain/0}

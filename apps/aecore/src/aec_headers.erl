@@ -24,6 +24,9 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
+-include_lib("parse_trans/include/exprecs.hrl").
+
+-export_records([header]).
 
 -define(POW_EV_SIZE, 42).
 

@@ -18,6 +18,8 @@
         , mock_genesis/0
         , unmock_genesis/0
         , wait_for_it/2
+        , start_chain_db/0
+        , stop_chain_db/0
         , extend_block_chain_with_state/3
         , aec_keys_setup/0
         , aec_keys_cleanup/1
@@ -156,6 +158,14 @@ genesis_block() ->
 
 genesis_block_with_state() ->
     aec_block_genesis:genesis_block_with_state(#{preset_accounts => ?PRESET_ACCOUNTS}).
+
+start_chain_db() ->
+    mnesia:start(),
+    [mnesia:create_table(Tab, Spec) ||
+        {Tab, Spec} <- aec_chain_state:ae_tables(ram)].
+
+stop_chain_db() ->
+    application:stop(mnesia).
 
 %% Generic blockchain with only coinbase transactions
 gen_block_chain_with_state(Length) ->

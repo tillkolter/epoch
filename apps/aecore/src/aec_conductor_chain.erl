@@ -170,7 +170,7 @@ insert_block(Block, State) ->
     ChainState1 = State#state.chain_state,
     case aec_chain_state:insert_block(Block, ChainState1) of
         {ok, ChainState2} ->
-            persistence_store_block(Block, ChainState1, ChainState2),
+            %% persistence_store_block(Block, ChainState1, ChainState2),
             {ok, State#state{chain_state = ChainState2}};
         {error,_Reason} = E -> E
     end.
@@ -179,7 +179,7 @@ insert_header(Header, State) ->
     ChainState1 = State#state.chain_state,
     case aec_chain_state:insert_header(Header, ChainState1) of
         {ok, ChainState2} ->
-            persistence_store_header(Header, ChainState1, ChainState2),
+            %% persistence_store_header(Header, ChainState1, ChainState2),
             {ok, State#state{chain_state = ChainState2}};
         {error,_Reason} = E -> E
     end.

@@ -37,6 +37,9 @@
         , get_genesis_hash/1
         ]).
 
+-export([check_db/0,
+         ae_tables/1]).
+
 -include("common.hrl"). %% Just for types
 -include("blocks.hrl"). %% Just for types
 
@@ -82,10 +85,10 @@ new() ->
 new(OptsIn) ->
     Opts = maps:merge(default_opts(), OptsIn),
     #{ type => aec_chain_state
-     , blocks_db => db_new()
+     , blocks_db => aec_nodes
      , top_header_hash => undefined
      , top_block_hash  => undefined
-     , state_db => db_new()
+     , state_db => aec_chain_state
      , max_snapshot_height => maps:get(max_snapshot_height, Opts)
      , sparse_snapshots_interval => maps:get(sparse_snapshots_interval, Opts)
      , keep_all_snapshots_height => maps:get(keep_all_snapshots_height, Opts)
@@ -325,11 +328,14 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 %%% Internal ADT for differing between blocks and headers
 %%%-------------------------------------------------------------------
 
--record(node, { type    :: 'block' | 'header'
+-record(node, { hash    :: binary()
+              , type    :: 'block' | 'header'
               , content :: any() %% aec_blocks | aec_headers
               , difficulty :: float()
-              , hash    :: binary()
               }).
+
+-record(chain_state, {key :: any(),
+                      value :: any()}).
 
 hash(#node{hash = Hash}) -> Hash.
 
@@ -938,21 +944,54 @@ keep_state_snapshot(HeightFromTop, State) ->
 db_new() ->
     dict:new().
 
+db_put(_Key, #node{} = Node, aec_nodes = Store) ->
+    mnesia:dirty_write(aec_nodes, Node),
+    Store;
+db_put(Key, Val, aec_chain_state = Store) ->
+    mnesia:dirty_write(aec_chain_state, #chain_state{key = Key, value = Val}),
+    Store;
 db_put(Key, Val, Store) ->
     dict:store(Key, Val, Store).
 
+db_get(Key, aec_nodes) ->
+    case mnesia:dirty_read(aec_nodes, Key) of
+        [#node{} = Obj] -> Obj;
+        []    -> error({failed_get, Key})
+    end;
+db_get(Key, aec_chain_state) ->
+    case mnesia:dirty_read(aec_chain_state, Key) of
+        [#chain_state{value = V}] -> V;
+        []    -> error({failed_get, Key})
+    end;
 db_get(Key, Store) ->
     case dict:find(Key, Store) of
         {ok, Res} -> Res;
         error -> error({failed_get, Key})
     end.
 
+db_find(Key, aec_nodes) ->
+    case mnesia:dirty_read(aec_nodes, Key) of
+        [#node{} = N] -> {ok, N};
+        []    -> error
+    end;
+db_find(Key, aec_chain_state) ->
+    case mnesia:dirty_read(aec_chain_state, Key) of
+        [#chain_state{value = V}] -> {ok, V};
+        []    -> error
+    end;
 db_find(Key, Store) ->
     case dict:find(Key, Store) of
         {ok, Res} -> {ok, Res};
         error -> error
     end.
 
+db_to_list(aec_nodes) ->
+    mnesia:dirty_select(
+      aec_nodes, [{ #node{hash = '$1', _ = '_'}, [], [{{'$1', '$_'}}] }]);
+db_to_list(aec_chain_state) ->
+    mnesia:dirty_select(
+      aec_chain_state,
+      [{ #chain_state{key='$1', value='$2'}, [], [{{'$1','$2'}}] }]);
 db_to_list(Store) ->
     dict:to_list(Store).
 
@@ -962,13 +1001,23 @@ blocks_db_put(#node{hash = Hash} = Node, State) ->
 
 blocks_db_find_at_height(Height, #{blocks_db := Store}) ->
     %% TODO: This is pretty inefficient
-    Fold = fun(_Hash, Node, Acc) ->
-                   case node_height(Node) =:= Height of
-                       true  -> [Node|Acc];
-                       false -> Acc
-                   end
-           end,
-    dict:fold(Fold, [], Store).
+    Pat = [{ #node{content = wild_pat(aec_blocks, block, [{height, Height}]),
+                   _ = '_'}, [], ['$_'] },
+           { #node{content = wild_pat(aec_headers, header, [{height, Height}]),
+                   _ = '_'}, [], ['$_'] }],
+    mnesia:dirty_select(Store, Pat).
+    %% Fold = fun(_Hash, Node, Acc) ->
+    %%                case node_height(Node) =:= Height of
+    %%                    true  -> [Node|Acc];
+    %%                    false -> Acc
+    %%                end
+    %%        end,
+    %% dict:fold(Fold, [], Store).
+
+wild_pat(M, R, Vals) ->
+    Sz = M:'#info-'(R, size),
+    R0 = setelement(1, erlang:make_tuple(Sz, '_'), R),
+    M:'#set-'(Vals, R0).
 
 blocks_db_find(Key, #{blocks_db := Store}) ->
     db_find(Key, Store).
@@ -998,3 +1047,48 @@ state_db_init_from_list(List, State) ->
 
 state_db_to_list(#{state_db := DB} =_State) ->
     db_to_list(DB).
+
+
+%%%===================================================================
+%%% startup hook, checking db
+%%%===================================================================
+
+check_db() ->
+    io:fwrite("check_db()~n", []),
+    ok = application:ensure_started(mnesia),
+    ensure_disc_schema(),
+    ensure_mnesia_tables(disc),
+    io:fwrite("done: ~p~n", [mnesia:info()]).
+
+ensure_mnesia_tables(Mode) ->
+    Tabs = mnesia:system_info(tables),
+    Res = [mnesia:create_table(T, Spec) || {T, Spec} <- ae_tables(Mode),
+                                           not lists:member(T, Tabs)],
+    io:fwrite("Tabs = ~p~n", [Res]).
+
+ae_tables(Mode) ->
+    [{aec_nodes, [
+                  {copies(Mode), [node()]}
+                , {type, set}
+                , {record_name, node}
+                , {attributes, record_info(fields, node)}
+                 ]}
+   , {aec_chain_state, [
+                        {copies(Mode), [node()]}
+                      , {type, set}
+                      , {attributes, record_info(fields, chain_state)}
+                      , {record_name, chain_state}
+                       ]
+     }].
+
+copies(disc) -> disc_copies;
+copies(ram ) -> ram_copies.
+
+ensure_disc_schema() ->
+    case mnesia:table_info(schema, disc_copies) of
+        [] ->
+            mnesia:change_table_copy_type(schema, node(), disc_copies);
+        [_|_] ->
+            ok
+    end.
+
