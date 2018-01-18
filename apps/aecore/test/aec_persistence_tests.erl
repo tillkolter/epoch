@@ -26,12 +26,14 @@ init_persistence() ->
     {ok, _} = aec_persistence:start_link(Path),
     Path.
 
-cleanup_persistence(Path) ->
-    Persist = get('__persist__'),
-    application:set_env(aecore, persist, Persist),
-    ok = aec_persistence:stop_and_clean(),
-    file:del_dir(Path),
+cleanup_persistence(_) ->
     ok.
+%% cleanup_persistence(Path) ->
+%%     Persist = get('__persist__'),
+%%     application:set_env(aecore, persist, Persist),
+%%     %% ok = aec_persistence:stop_and_clean(),
+%%     %% file:del_dir(Path),
+%%     ok.
 
 kill_and_restart_conductor() ->
     %% Stop server

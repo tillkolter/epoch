@@ -18,7 +18,7 @@
         , get_missing_block_hashes/1
         , get_top_N_blocks_time_summary/2
         , get_n_headers_from_top/2
-        , get_state_trees_for_persistance/1
+        , get_state_trees_for_persistence/1
         , hash_is_connected_to_genesis/2
         , has_block/2
         , has_header/2
@@ -26,7 +26,7 @@
         , insert_header/2
         , new/0
         , new/1
-        , new_from_persistance/2
+        , new_from_persistence/2
         , top_block/1
         , get_block_state/2
         , account/2
@@ -37,14 +37,21 @@
         , get_genesis_hash/1
         ]).
 
+-export([db_get_block/1,
+         db_get_header/1]).
+
+-export([write_top_block/1,
+         write_top_header/1,
+         write_block_state/2]).
+
 -export([check_db/0,
-         ae_tables/1]).
+         tables/1]).
 
 -include("common.hrl"). %% Just for types
 -include("blocks.hrl"). %% Just for types
 
 -opaque(state() :: #{'type' => aec_chain_state
-                    , 'blocks_db' => dict:dict()
+                    , 'blocks_db' => aec_nodes
                     , 'state_db' => dict:dict()
                     , 'top_header_hash' => binary() | 'undefined'
                     , 'top_block_hash' => binary() | 'undefined'
@@ -86,9 +93,9 @@ new(OptsIn) ->
     Opts = maps:merge(default_opts(), OptsIn),
     #{ type => aec_chain_state
      , blocks_db => aec_nodes
-     , top_header_hash => undefined
-     , top_block_hash  => undefined
-     , state_db => aec_chain_state
+     , top_header_hash => read_top_header()
+     , top_block_hash  => read_top_block()
+     , state_db => db_new()
      , max_snapshot_height => maps:get(max_snapshot_height, Opts)
      , sparse_snapshots_interval => maps:get(sparse_snapshots_interval, Opts)
      , keep_all_snapshots_height => maps:get(keep_all_snapshots_height, Opts)
@@ -266,12 +273,12 @@ find_common_ancestor(Hash1, Hash2, ?assert_state() = State) ->
         _ -> {error, unknown_hash}
     end.
 
--spec get_state_trees_for_persistance(state())->[{Hash :: binary(), #trees{}}].
-get_state_trees_for_persistance(?assert_state() = State) ->
+-spec get_state_trees_for_persistence(state())->[{Hash :: binary(), #trees{}}].
+get_state_trees_for_persistence(?assert_state() = State) ->
     state_db_to_list(State).
 
--spec new_from_persistance([#block{}|#header{}], [{Hash :: binary(), #trees{}}]) -> state().
-new_from_persistance(Chain, StateTreesList) ->
+-spec new_from_persistence([#block{}|#header{}], [{Hash :: binary(), #trees{}}]) -> state().
+new_from_persistence(Chain, StateTreesList) ->
     State = state_db_init_from_list(StateTreesList, new()),
     NodeChain = [wrap_block_or_header(X) || X <- Chain],
     State1 = blocks_db_init_from_list(NodeChain, State),
@@ -328,13 +335,16 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 %%% Internal ADT for differing between blocks and headers
 %%%-------------------------------------------------------------------
 
--record(node, { hash    :: binary()
-              , type    :: 'block' | 'header'
+-record(node, { hash    :: binary() | '_' | '$1'
+              , type    :: 'block' | 'header' | '_'
               , content :: any() %% aec_blocks | aec_headers
-              , difficulty :: float()
+              , difficulty :: float() | '_'
               }).
 
 -record(chain_state, {key :: any(),
+                      value :: any()}).
+
+-record(block_state, {key :: any(),
                       value :: any()}).
 
 hash(#node{hash = Hash}) -> Hash.
@@ -942,7 +952,10 @@ keep_state_snapshot(HeightFromTop, State) ->
 %%%-------------------------------------------------------------------
 
 db_new() ->
-    dict:new().
+    dict:from_list(
+      mnesia:dirty_select(aec_block_state,
+                          [{ #block_state{key = '$1', value = '$2'},
+                             [], [{{'$1', '$2'}}] }])).
 
 db_put(_Key, #node{} = Node, aec_nodes = Store) ->
     mnesia:dirty_write(aec_nodes, Node),
@@ -967,6 +980,22 @@ db_get(Key, Store) ->
     case dict:find(Key, Store) of
         {ok, Res} -> Res;
         error -> error({failed_get, Key})
+    end.
+
+db_get_block(Key) ->
+    case mnesia:dirty_read(aec_nodes, Key) of
+        [#node{type = block, content = Block}] ->
+            Block;
+        _ ->
+            error({block_not_found, Key})
+    end.
+
+db_get_header(Key) ->
+    case mnesia:dirty_read(aec_nodes, Key) of
+        [#node{type = header, content = Hdr}] ->
+            Hdr;
+        _ ->
+            error({header_not_found, Key})
     end.
 
 db_find(Key, aec_nodes) ->
@@ -1014,10 +1043,22 @@ blocks_db_find_at_height(Height, #{blocks_db := Store}) ->
     %%        end,
     %% dict:fold(Fold, [], Store).
 
-wild_pat(M, R, Vals) ->
-    Sz = M:'#info-'(R, size),
-    R0 = setelement(1, erlang:make_tuple(Sz, '_'), R),
-    M:'#set-'(Vals, R0).
+%% Corresponds to the record syntax e.g. #block{height = Height, _ = '_'}
+%% but relies on some manually exported record_info/2 equivalents in order
+%% to avoid having to include record definitions.
+-spec wild_pat(module(), atom(), [{atom(), any()}]) -> tuple().
+wild_pat(Module, Recname, Vals) ->
+    Sz = Module:r_info(size, Recname),
+    Flds = Module:r_info(fields, Recname),
+    Ps = lists:zip(Flds, lists:seq(2,Sz)),
+    R0 = setelement(1, erlang:make_tuple(Sz, '_'), Recname),
+    set_vals(Vals, Ps, R0).
+
+set_vals([{K,V}|T], Ps, R) ->
+    {_, P} = lists:keyfind(K, 1, Ps),
+    set_vals(T, Ps, setelement(P, R, V));
+set_vals([], _, R) ->
+    R.
 
 blocks_db_find(Key, #{blocks_db := Store}) ->
     db_find(Key, Store).
@@ -1048,6 +1089,38 @@ state_db_init_from_list(List, State) ->
 state_db_to_list(#{state_db := DB} =_State) ->
     db_to_list(DB).
 
+%% persistence functions
+
+write_top_header(Hash) ->
+    mnesia:dirty_write(aec_chain_state, #chain_state{key = top_header,
+                                                     value = Hash}),
+    ok.
+
+read_top_header() ->
+    case mnesia:dirty_read(aec_chain_state, top_header) of
+        [] ->
+            undefined;
+        [#chain_state{value = Hash}] ->
+            Hash
+    end.
+
+write_top_block(Hash) ->
+    mnesia:dirty_write(aec_chain_state, #chain_state{key = top_block,
+                                                     value = Hash}),
+    ok.
+
+read_top_block() ->
+    case mnesia:dirty_read(aec_chain_state, top_block) of
+        [] ->
+            undefined;
+        [#chain_state{value = Hash}] ->
+            Hash
+    end.
+
+write_block_state(Hash, Trees) ->
+    mnesia:dirty_write(aec_block_state, #block_state{key = Hash,
+                                                     value = Trees}),
+    ok.
 
 %%%===================================================================
 %%% startup hook, checking db
@@ -1062,11 +1135,11 @@ check_db() ->
 
 ensure_mnesia_tables(Mode) ->
     Tabs = mnesia:system_info(tables),
-    Res = [mnesia:create_table(T, Spec) || {T, Spec} <- ae_tables(Mode),
+    Res = [mnesia:create_table(T, Spec) || {T, Spec} <- tables(Mode),
                                            not lists:member(T, Tabs)],
     io:fwrite("Tabs = ~p~n", [Res]).
 
-ae_tables(Mode) ->
+tables(Mode) ->
     [{aec_nodes, [
                   {copies(Mode), [node()]}
                 , {type, set}
@@ -1078,8 +1151,14 @@ ae_tables(Mode) ->
                       , {type, set}
                       , {attributes, record_info(fields, chain_state)}
                       , {record_name, chain_state}
-                       ]
-     }].
+                       ]}
+   , {aec_block_state, [
+                        {copies(Mode), [node()]}
+                      , {type, set}
+                      , {attributes, record_info(fields, block_state)}
+                      , {record_name, block_state}
+                       ]}
+    ].
 
 copies(disc) -> disc_copies;
 copies(ram ) -> ram_copies.

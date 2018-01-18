@@ -14,7 +14,8 @@
 -export([start_link/0,
          start_link/1,
          stop/0,
-         stop_and_clean/0]).
+         stop_and_clean/0,
+         remove_files/0]).
 
 %% API
 -export([get_chain/0,
@@ -142,6 +143,9 @@ get_top_header()  ->
 get_block_state(Hash) ->
     gen_server:call(?SERVER, {get_block_state, Hash}).
 
+remove_files() ->
+    gen_server:call(?SERVER, remove_files).
+
 %% State preserving functions
 handle_call(sync, _From, State) ->
     %% Ensure that the persistense server has caught up with writing.
@@ -172,6 +176,8 @@ handle_call(get_top_header, _From, State) ->
     {reply, int_get_top_header(State), State};
 handle_call({get_block_state, Hash}, _From, State) ->
     {reply, int_get_block_state(Hash, State), State};
+handle_call(remove_files, _From, State) ->
+    {reply, int_remove_files(State), State};
 
 handle_call(Request, From, State) ->
     lager:warning("Unknown call request from ~p: ~p", [From, Request]),
@@ -322,3 +328,8 @@ ensure_dir_exists(Path) ->
 
 to_hexstring(B) when is_binary(B) ->
     [io_lib:format("~2.16.0B", [C]) || C <- binary_to_list(B)].
+
+int_remove_files(#aecp_state{path = Path}) ->
+    {MS,S,US} = os:timestamp(),
+    file:rename(Path, Path ++ lists:flatten(io_lib:fwrite("~w.~w.~w",
+                                                          [MS, S, US]))).

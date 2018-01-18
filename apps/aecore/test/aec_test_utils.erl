@@ -162,7 +162,7 @@ genesis_block_with_state() ->
 start_chain_db() ->
     mnesia:start(),
     [mnesia:create_table(Tab, Spec) ||
-        {Tab, Spec} <- aec_chain_state:ae_tables(ram)].
+        {Tab, Spec} <- aec_chain_state:tables(ram)].
 
 stop_chain_db() ->
     application:stop(mnesia).

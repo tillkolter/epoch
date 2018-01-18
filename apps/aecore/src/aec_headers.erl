@@ -7,6 +7,7 @@
          target/1,
          set_target/2,
          difficulty/1,
+         r_info/2,
          time_in_secs/1,
          time_in_msecs/1,
          serialize_to_network/1,
@@ -24,9 +25,6 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include_lib("parse_trans/include/exprecs.hrl").
-
--export_records([header]).
 
 -define(POW_EV_SIZE, 42).
 
@@ -57,6 +55,10 @@ time_in_secs(Header) ->
 
 time_in_msecs(Header) ->
     Header#header.time.
+
+r_info(size  , header) -> record_info(size  , header);
+r_info(fields, header) -> record_info(fields, header).
+
 
 -spec serialize_to_network(header()) -> {ok, binary()}.
 serialize_to_network(H = #header{}) ->

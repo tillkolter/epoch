@@ -56,7 +56,8 @@ init(State) ->
             Hash = aec_persistence:get_top_block(),
             TopState = aec_persistence:get_block_state(Hash),
             InitTrees = [{Hash, TopState}],
-            ChainState = aec_chain_state:new_from_persistance(Chain, InitTrees),
+            ChainState = aec_chain_state:new_from_persistence(Chain, InitTrees),
+            aec_persistence:remove_files(),
             State#state{chain_state = ChainState}
     end.
 
@@ -170,6 +171,7 @@ insert_block(Block, State) ->
     ChainState1 = State#state.chain_state,
     case aec_chain_state:insert_block(Block, ChainState1) of
         {ok, ChainState2} ->
+            persist_chain(ChainState1, ChainState2),
             %% persistence_store_block(Block, ChainState1, ChainState2),
             {ok, State#state{chain_state = ChainState2}};
         {error,_Reason} = E -> E
@@ -179,6 +181,7 @@ insert_header(Header, State) ->
     ChainState1 = State#state.chain_state,
     case aec_chain_state:insert_header(Header, ChainState1) of
         {ok, ChainState2} ->
+            persist_chain(ChainState1, ChainState2),
             %% persistence_store_header(Header, ChainState1, ChainState2),
             {ok, State#state{chain_state = ChainState2}};
         {error,_Reason} = E -> E
@@ -186,30 +189,6 @@ insert_header(Header, State) ->
 
 %%%===================================================================
 %%% Handle persistence
-
-persistence_store_block(Block, StateBefore, State) ->
-    try begin
-            %% Best effort persistence.
-            %% If the server is not there, ignore it.
-            aec_persistence:write_block(Block),
-            persist_chain(StateBefore, State)
-        end
-    catch T:E ->
-            lager:error("Persistence server error: ~p:~p", [T, E]),
-            ok
-    end.
-
-persistence_store_header(Header, StateBefore, State) ->
-    try begin
-            %% Best effort persistence.
-            %% If the server is not there, ignore it.
-            aec_persistence:write_header(Header),
-            persist_chain(StateBefore, State)
-        end
-    catch T:E ->
-            lager:error("Persistence server error: ~p:~p", [T, E]),
-            ok
-    end.
 
 %% NOTE: The order is significant.
 %%       The header we can persist right away, but the top block hash
@@ -219,20 +198,20 @@ persist_chain(StateBefore, StateAfter) ->
     case aec_chain_state:top_header_hash(StateAfter) of
         undefined -> ok;
         TopHeaderHash ->
-            aec_persistence:write_top_header(TopHeaderHash),
+            aec_chain_state:write_top_header(TopHeaderHash),
             case aec_chain_state:top_block_hash(StateAfter) of
                 undefined -> ok;
                 TopBlockHash ->
                     persist_state_trees(StateBefore, StateAfter),
-                    aec_persistence:write_top_block(TopBlockHash)
+                    aec_chain_state:write_top_block(TopBlockHash)
             end
     end.
 
 persist_state_trees(StateBefore, StateAfter) ->
     %% Persist the state trees
-    Trees1 = aec_chain_state:get_state_trees_for_persistance(StateBefore),
-    Trees2 = aec_chain_state:get_state_trees_for_persistance(StateAfter),
+    Trees1 = aec_chain_state:get_state_trees_for_persistence(StateBefore),
+    Trees2 = aec_chain_state:get_state_trees_for_persistence(StateAfter),
     Persist = Trees2 -- Trees1,
     lists:foreach(fun({Hash, Trees}) ->
-                          aec_persistence:write_block_state(Hash, Trees)
+                          aec_chain_state:write_block_state(Hash, Trees)
                   end, Persist).

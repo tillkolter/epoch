@@ -11,6 +11,7 @@
          txs/1,
          txs_hash/1,
          difficulty/1,
+         r_info/2,
          time_in_msecs/1,
          pow/1,
          set_pow/3,
@@ -39,9 +40,6 @@
 -include("common.hrl").
 -include("blocks.hrl").
 -include("core_txs.hrl").
--include_lib("parse_trans/include/exprecs.hrl").
-
--export_records([block]).
 
 -define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).
 
@@ -62,6 +60,10 @@ target(Block) ->
 -spec difficulty(block()) -> float().
 difficulty(Block) ->
     aec_pow:target_to_difficulty(target(Block)).
+
+r_info(size  , block) -> record_info(size  , block);
+r_info(fields, block) -> record_info(fields, block).
+
 
 time_in_msecs(Block) ->
     Block#block.time.
