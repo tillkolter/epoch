@@ -198,12 +198,12 @@ persist_chain(StateBefore, StateAfter) ->
     case aec_chain_state:top_header_hash(StateAfter) of
         undefined -> ok;
         TopHeaderHash ->
-            aec_chain_state:write_top_header(TopHeaderHash),
+            aec_chain_state:write_top_header_hash(TopHeaderHash),
             case aec_chain_state:top_block_hash(StateAfter) of
                 undefined -> ok;
                 TopBlockHash ->
                     persist_state_trees(StateBefore, StateAfter),
-                    aec_chain_state:write_top_block(TopBlockHash)
+                    aec_chain_state:write_top_block_hash(TopBlockHash)
             end
     end.
 

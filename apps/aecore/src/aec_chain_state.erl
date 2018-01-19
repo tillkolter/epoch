@@ -40,8 +40,8 @@
 -export([db_get_block/1,
          db_get_header/1]).
 
--export([write_top_block/1,
-         write_top_header/1,
+-export([write_top_block_hash/1,
+         write_top_header_hash/1,
          write_block_state/2]).
 
 -export([check_db/0,
@@ -53,12 +53,9 @@
 -opaque(state() :: #{'type' => aec_chain_state
                     , 'blocks_db' => aec_nodes
                     , 'state_db' => dict:dict()
-                    , 'top_header_hash' => binary() | 'undefined'
-                    , 'top_block_hash' => binary() | 'undefined'
                     , 'max_snapshot_height' => pos_integer()
                     , 'sparse_snapshots_interval' => pos_integer()
                     , 'keep_all_snapshots_height' => pos_integer()
-                    , 'genesis_block_hash' => 'undefined' | binary()
                     }).
 
 -type(opts() :: #{ 'max_snapshot_height' := pos_integer()
@@ -93,13 +90,10 @@ new(OptsIn) ->
     Opts = maps:merge(default_opts(), OptsIn),
     #{ type => aec_chain_state
      , blocks_db => aec_nodes
-     , top_header_hash => read_top_header()
-     , top_block_hash  => read_top_block()
      , state_db => db_new()
      , max_snapshot_height => maps:get(max_snapshot_height, Opts)
      , sparse_snapshots_interval => maps:get(sparse_snapshots_interval, Opts)
      , keep_all_snapshots_height => maps:get(keep_all_snapshots_height, Opts)
-     , genesis_block_hash => undefined
      }.
 
 default_opts() ->
@@ -109,23 +103,28 @@ default_opts() ->
      }.
 
 -spec top_header(state()) -> 'undefined' | #header{}.
-top_header(?match_state(top_header_hash := undefined)) -> undefined;
-top_header(?match_state(top_header_hash := X) = State) ->
-    export_header(blocks_db_get(X, State)).
-
+top_header(?assert_state() = State) ->
+    case read_top_header_hash() of
+        undefined -> undefined;
+        X ->
+            export_header(blocks_db_get(X, State))
+    end.
 
 -spec top_header_hash(state()) -> 'undefined' | binary().
-top_header_hash(?match_state(top_header_hash := X)) ->
-    X.
+top_header_hash(_) ->
+    read_top_header_hash().
 
 -spec top_block_hash(state()) -> 'undefined' | binary().
-top_block_hash(?match_state(top_block_hash := X)) ->
-    X.
+top_block_hash(_) ->
+    read_top_block_hash().
 
 -spec top_block(state()) -> 'undefined' | #block{}.
-top_block(?match_state(top_block_hash := undefined)) -> undefined;
-top_block(?match_state(top_block_hash := X) = State) ->
-    export_block(blocks_db_get(X, State)).
+top_block(?assert_state() = State) ->
+    case read_top_block_hash() of
+        undefined -> undefined;
+        X ->
+            export_block(blocks_db_get(X, State))
+    end.
 
 -spec get_block_state(binary(), state()) -> {'ok', trees()} | {'error', 'no_state_trees'}.
 get_block_state(Hash, ?assert_state() = State) ->
@@ -136,12 +135,18 @@ get_block_state(Hash, ?assert_state() = State) ->
 
 -spec account(pubkey(), state()) -> 'no_top_block_hash' | 'no_state_trees' |
                                     'none' | {value, account()}.
-account(_, ?match_state(top_block_hash := undefined)) -> no_top_block_hash; %% TODO Can this ever happen?
-account(Pubkey, ?match_state(top_block_hash := X) = State) ->
-    case state_db_find(X, State) of
-        {ok, Trees} ->
-            aec_accounts_trees:lookup(Pubkey, aec_trees:accounts(Trees));
-        error -> no_state_trees
+account(Pubkey, ?assert_state() = State) ->
+    case read_top_block_hash() of
+        undefined ->
+            %% TODO Can this ever happen?
+            no_top_block_hash;
+        X ->
+            case state_db_find(X, State) of
+                {ok, Trees} ->
+                    aec_accounts_trees:lookup(
+                      Pubkey, aec_trees:accounts(Trees));
+                error -> no_state_trees
+            end
     end.
 
 -spec all_accounts_balances(binary(), state()) -> {'ok', [{pubkey(), non_neg_integer()}]} |
@@ -156,10 +161,12 @@ all_accounts_balances(BlockHeaderHash, ?assert_state() = State) ->
 
 -spec get_n_headers_from_top(non_neg_integer(), state()) ->
                           {'ok', list(#header{})} | {error, atom()}.
-get_n_headers_from_top(_N, ?match_state(top_header_hash := undefined)) ->
-    {error, chain_too_short};
-get_n_headers_from_top(N, ?match_state(top_header_hash := X) = State) ->
-    get_n_headers_from(blocks_db_get(X, State), N, State).
+get_n_headers_from_top(N, ?assert_state() = State) ->
+    case read_top_header_hash() of
+        undefined -> {error, chain_too_short};
+        X ->
+            get_n_headers_from(blocks_db_get(X, State), N, State)
+    end.
 
 -spec insert_block(#block{}, state()) -> {'ok', state()} | {'error', any()}.
 insert_block(Block, ?assert_state() = State0) ->
@@ -293,8 +300,8 @@ new_from_persistence(Chain, StateTreesList) ->
     end.
 
 -spec get_genesis_hash(state()) -> undefined | binary().
-get_genesis_hash(?match_state(genesis_block_hash := GH)) ->
-    GH.
+get_genesis_hash(?assert_state()) ->
+    read_genesis_block_hash().
 
 -spec get_missing_block_hashes(state()) -> [binary()].
 %% @doc Get hashes for missing blocks on the main chain, i.e.,
@@ -325,11 +332,15 @@ get_top_N_blocks_time_summary(?assert_state() = State, N)
 internal_error(What) ->
     throw(?internal_error(What)).
 
-get_top_header_hash(#{top_header_hash := H}) -> H.
-set_top_header_hash(H, State) when is_binary(H) -> State#{top_header_hash => H}.
+get_top_header_hash(_) -> read_top_header_hash().
+set_top_header_hash(H, State) when is_binary(H) ->
+    write_top_header_hash(H),
+    State.
 
-get_top_block_hash(#{top_block_hash := H}) -> H.
-set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
+get_top_block_hash(_) -> read_top_block_hash().
+set_top_block_hash(H, State) when is_binary(H) ->
+    write_top_block_hash(H),
+    State.
 
 %%%-------------------------------------------------------------------
 %%% Internal ADT for differing between blocks and headers
@@ -380,10 +391,13 @@ find_genesis_node(State) ->
     end.
 
 %% this is when we insert the genesis block the first time
-node_is_genesis(Node, ?match_state(genesis_block_hash := undefined)) ->
-    node_height(Node) =:= aec_block_genesis:height();
-node_is_genesis(Node, State) ->
-    hash(Node) =:= get_genesis_hash(State).
+node_is_genesis(Node, ?assert_state()) ->
+    case read_genesis_block_hash() of
+        undefined ->
+            node_height(Node) =:= aec_block_genesis:height();
+        Hash ->
+            hash(Node) =:= Hash
+    end.
 
 node_is_genesis_block(Node, State) ->
     (node_is_genesis(Node, State))
@@ -1069,10 +1083,10 @@ blocks_db_get(Key, #{blocks_db := Store}) ->
 blocks_db_init_from_list(List, State) ->
     [GenesisNode] = [N || N <- List, node_height(N) =:= 0],
     GenesisHash = hash(GenesisNode),
-    Fun = fun(Node, Acc) -> db_put(hash(Node), Node, Acc)end,
-    DB = lists:foldl(Fun, db_new(), List),
-
-    State#{blocks_db => DB, genesis_block_hash => GenesisHash}.
+    write_genesis_block_hash(GenesisHash),
+    Fun = fun(Node) -> db_put(hash(Node), Node, aec_nodes) end,
+    lists:foreach(Fun, List),
+    State.
 
 
 state_db_put(Hash, Trees, #{state_db := DB} = State) ->
@@ -1091,36 +1105,41 @@ state_db_to_list(#{state_db := DB} =_State) ->
 
 %% persistence functions
 
-write_top_header(Hash) ->
-    mnesia:dirty_write(aec_chain_state, #chain_state{key = top_header,
-                                                     value = Hash}),
-    ok.
+write_top_header_hash(Hash) ->
+    write_chain_state_value(hop_header_hash, Hash).
 
-read_top_header() ->
-    case mnesia:dirty_read(aec_chain_state, top_header) of
-        [] ->
-            undefined;
-        [#chain_state{value = Hash}] ->
-            Hash
-    end.
+read_top_header_hash() ->
+    read_chain_state_value(top_header_hash).
 
-write_top_block(Hash) ->
-    mnesia:dirty_write(aec_chain_state, #chain_state{key = top_block,
-                                                     value = Hash}),
-    ok.
+read_genesis_block_hash() ->
+    read_chain_state_value(genesis_block_hash).
 
-read_top_block() ->
-    case mnesia:dirty_read(aec_chain_state, top_block) of
-        [] ->
-            undefined;
-        [#chain_state{value = Hash}] ->
-            Hash
-    end.
+write_genesis_block_hash(Hash) ->
+    write_chain_state_value(genesis_block_hash, Hash).
+
+read_top_block_hash() ->
+    read_chain_state_value(top_block_hash).
+
+write_top_block_hash(Hash) ->
+    write_chain_state_value(top_block_hash, Hash).
 
 write_block_state(Hash, Trees) ->
     mnesia:dirty_write(aec_block_state, #block_state{key = Hash,
                                                      value = Trees}),
     ok.
+
+write_chain_state_value(Key, Value) ->
+    mnesia:dirty_write(aec_chain_state, #chain_state{key = Key,
+                                                     value = Value}),
+    ok.
+
+read_chain_state_value(Key) ->
+    case mnesia:dirty_read(aec_chain_state, Key) of
+        [#chain_state{value = V}] ->
+            V;
+        [] ->
+            undefined
+    end.
 
 %%%===================================================================
 %%% startup hook, checking db
