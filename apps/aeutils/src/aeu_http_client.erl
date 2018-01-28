@@ -48,8 +48,7 @@ process_http_return(Method, OperationId, R) ->
             try
                 Result = jsx:decode(iolist_to_binary(Body), [return_maps]),
                 lager:debug("Decoded response: ~p", [Result]),
-                endpoints:validate_response(OperationId, Method, ReturnCode, Result),
-                {ok, Result}
+                endpoints:validate_response(OperationId, Method, ReturnCode, Result)
             catch
                 error:E ->
                     lager:error("http response ~p", [R]),
