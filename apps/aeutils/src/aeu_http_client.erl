@@ -14,7 +14,6 @@ request(BaseUri, OperationId, Params) ->
     HTTPOptions = [{timeout, Timeout}, {connect_timeout, CTimeout}],
     %% we support only one method at the moment
     [Method|_] = maps:keys(endpoints:operation(OperationId)),
-    endpoints:prepare_validation(),
     endpoints:validate_request(OperationId, Method, Params),
     request(BaseUri, Method, OperationId, Params, [], HTTPOptions, []).
 
@@ -64,6 +63,15 @@ process_http_return(Method, OperationId, R) ->
 encode_get_params(#{} = Ps) ->
     encode_get_params(maps:to_list(Ps));
 encode_get_params(Params) when is_list(Params) ->
-    ["?", lists:join( "&", [ [http_uri:encode(K), "=" , http_uri:encode(V)] 
+    ["?", lists:join( "&", [ [http_uri:encode(to_string(K)), "=" , http_uri:encode(to_string(V))] 
                              || {K,V} <- Params ] ) ].
+
+to_string(A) when is_atom(A) ->
+    atom_to_list(A);
+to_string(N) when is_integer(N) ->
+    integer_to_list(N);
+to_string(S) ->
+    S.
+
+
 
