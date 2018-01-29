@@ -16,6 +16,22 @@ definitions_test() ->
     {error, [{data_invalid, _, wrong_size, _, _}]} = 
         jesse:validate("/definitions/Pow", [ I || I <- lists:seq(1,4) ]).
 
+ref_test() ->
+    JEP = endpoints:prepare_validation(),
+    {_Good, Bad} = lists:splitwith(fun(X) -> X == ok end, JEP),
+    %% jesse:add_schema("RefPow", #{<<"$ref">> => <<"/definitions/Pow">>),
+    Pow =  #{<<"$ref">> => <<"/definitions/Pow">>},
+    ?assertEqual([], Bad),
+    ?assertEqual({ok, lists:seq(1,42)}, 
+                 validate(Pow, [ I || I<-lists:seq(1,42) ])),
+    {error, [{data_invalid, _, wrong_type, _, _}]} = 
+        validate(Pow, [ "bla" || _ <- lists:seq(1,4) ]),
+    {error, [{data_invalid, _, wrong_size, _, _}]} = 
+        validate(Pow, [ I || I <- lists:seq(1,4) ]).
+
+validate(Schema, Data) ->
+  endpoints:validate(Schema, Data).
+
 %% This tests reveals uncovered cases in creation json_schema from swagger
 %% The difference are in "error" versus error tags
 json_schema_test() ->
