@@ -5,16 +5,16 @@
 -include_lib("eunit/include/eunit.hrl").
 
 definitions_test() ->
-    {_Good, Bad} = lists:splitwith(fun(X) -> X == ok end, 
-                                  jesse_endpoints:load_definitions()),
+    JEP = endpoints:prepare_validation(),
+    {_Good, Bad} = lists:splitwith(fun(X) -> X == ok end, JEP),
     ?assertEqual([], Bad),
     ?assertEqual({ok, lists:seq(1,42)}, 
                  jesse:validate("/definitions/Pow", 
                                 [ I || I<-lists:seq(1,42) ])),
     {error, [{data_invalid, _, wrong_type, _, _}]} = 
-        jesse:validate("/definitions/Pow", [ "bla" || I<-lists:seq(1,4) ]),
+        jesse:validate("/definitions/Pow", [ "bla" || _ <- lists:seq(1,4) ]),
     {error, [{data_invalid, _, wrong_size, _, _}]} = 
-        jesse:validate("/definitions/Pow", [ I || I<-lists:seq(1,4) ]).
+        jesse:validate("/definitions/Pow", [ I || I <- lists:seq(1,4) ]).
 
 %% This tests reveals uncovered cases in creation json_schema from swagger
 %% The difference are in "error" versus error tags

@@ -14,6 +14,7 @@ request(BaseUri, OperationId, Params) ->
     HTTPOptions = [{timeout, Timeout}, {connect_timeout, CTimeout}],
     %% we support only one method at the moment
     [Method|_] = maps:keys(endpoints:operation(OperationId)),
+    endpoints:prepare_validation(),
     endpoints:validate_request(OperationId, Method, Params),
     request(BaseUri, Method, OperationId, Params, [], HTTPOptions, []).
 

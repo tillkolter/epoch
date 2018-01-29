@@ -64,7 +64,7 @@ ping(Uri, LocalPingObj) ->
                            },
     Response = process_request(Uri, 'Ping', PingObj),
     case Response of
-        {ok, #{<<"reason">> := Reason}} ->
+        {ok, _, #{<<"reason">> := Reason}} ->
             lager:debug("Got an error return: Reason = ~p", [Reason]),
             aec_events:publish(chain_sync,
                                {sync_aborted, #{uri => Uri,
@@ -76,7 +76,7 @@ ping(Uri, LocalPingObj) ->
                           protocol_violation;
                       _ -> Reason
                     end};
-        {ok, #{ <<"genesis_hash">> := EncRemoteGHash,
+        {ok, 200, #{ <<"genesis_hash">> := EncRemoteGHash,
                 <<"best_hash">> := EncRemoteTopHash} = Map} ->
             case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
                   aec_base58c:safe_decode(block_hash, EncRemoteTopHash)} of
@@ -99,7 +99,7 @@ ping(Uri, LocalPingObj) ->
 top(Uri) ->
     Response = process_request(Uri, 'GetTop', []),
     case Response of
-        {ok, Data} ->
+        {ok, 200, Data} ->
             {ok, Header} = aec_headers:deserialize_from_map(Data),
             {ok, Header};
         {error, _Reason} = Error ->
@@ -112,7 +112,7 @@ get_block(Uri, Hash) ->
     EncHash = aec_base58c:encode(block_hash, Hash),
     Response = process_request(Uri,'GetBlockByHash', [{"hash", EncHash}]),
     case Response of
-        {ok, Data} ->
+        {ok, 200, Data} ->
             {ok, Block} = aec_blocks:deserialize_from_map(Data),
             {ok, Block};
         {error, _Reason} = Error ->
@@ -141,9 +141,9 @@ transactions(Uri) ->
            end
     end.
 
-tx_response({ok, #{'Transactions' := Txs}}) -> Txs;
-tx_response({ok, [#{<<"tx">> := _}|_] = Txs}) -> Txs;
-tx_response({ok, []}) -> [];
+tx_response({ok, 200, #{'Transactions' := Txs}}) -> Txs;
+tx_response({ok, 200, [#{<<"tx">> := _}|_] = Txs}) -> Txs;
+tx_response({ok, 200, []}) -> [];
 tx_response(_Other) -> bad_result.
 
 
@@ -153,7 +153,7 @@ send_block(Uri, Block) ->
     lager:debug("send_block; serialized: ~p", [pp(BlockSerialized)]),
     Response = process_request(Uri, 'PostBlock', BlockSerialized),
     case Response of
-        {ok, _Map} ->
+        {ok, 200, _Map} ->
             {ok, ok};
         {error, _Reason} = Error ->
             Error
@@ -165,7 +165,7 @@ send_tx(Uri, SignedTx) ->
                      transaction, aec_tx_sign:serialize_to_binary(SignedTx)),
     Response = process_request(Uri, 'PostTx', #{tx => TxSerialized}),
     case Response of
-        {ok, _Map} ->
+        {ok, 200, _Map} ->
             {ok, ok};
         {error, _Reason} = Error ->
             Error
@@ -181,7 +181,7 @@ new_spend_tx(IntPeer, #{recipient_pubkey := Kr,
             recipient_pubkey, aec_base58c:encode(account_pubkey, Kr), Req0),
     Response = process_request(IntPeer, 'PostSpendTx', Req),
     case Response of
-        {ok, _Map} ->
+        {ok, 200, _Map} ->
             {ok, ok};
         {error, _Reason} = Error ->
             Error
