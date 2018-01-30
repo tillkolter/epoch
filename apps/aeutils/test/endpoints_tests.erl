@@ -5,7 +5,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 definitions_test() ->
-    JEP = endpoints:prepare_validation(),
+    JEP = [ ok = jesse:add_schema(Def, Schema) || {Def, Schema} <- endpoints:definitions() ],
     {_Good, Bad} = lists:splitwith(fun(X) -> X == ok end, JEP),
     ?assertEqual([], Bad),
     ?assertEqual({ok, lists:seq(1,42)}, 
@@ -17,9 +17,8 @@ definitions_test() ->
         jesse:validate("/definitions/Pow", [ I || I <- lists:seq(1,4) ]).
 
 ref_test() ->
-    JEP = endpoints:prepare_validation(),
+    JEP = [ ok = jesse:add_schema(Def, Schema) || {Def, Schema} <- endpoints:definitions() ],
     {_Good, Bad} = lists:splitwith(fun(X) -> X == ok end, JEP),
-    %% jesse:add_schema("RefPow", #{<<"$ref">> => <<"/definitions/Pow">>),
     Pow =  #{<<"$ref">> => <<"/definitions/Pow">>},
     ?assertEqual([], Bad),
     ?assertEqual({ok, lists:seq(1,42)}, 
@@ -40,7 +39,6 @@ json_schema_test() ->
     ?assertEqual(Map, jsx:decode(Schema, [return_maps])).
 
 ping_pong_test() ->
-    endpoints:prepare_validation(),
     ok = jesse:add_schema("__response", #{<<"$ref">> => <<"/definitions/Ping">>}),
     {ok, _} = 
         jesse:validate("__response",
@@ -56,8 +54,6 @@ ping_pong_test() ->
                       ).
 
 top_test() ->
-    endpoints:prepare_validation(),
-    jesse_database:load("/definitions/Top"),
     ok = jesse:add_schema("__response", #{<<"$ref">> => <<"/definitions/Top">>}),
     {ok, _} = 
         jesse:validate("__response",  
@@ -71,6 +67,11 @@ top_test() ->
                          <<"time">> => 1517230982680,
                          <<"txs_hash">> => <<"bx$MM7HikzBE9itWmwqtW19Z8SuNQucTcnGvDpsmazVJn8GexSUX">>,
                          <<"version">> => 5}).
+
+in_path_test() ->
+   ?assertEqual(<<"/v2/block/height/3">>, 
+      iolist_to_binary(endpoints:path(get, 'GetBlockByHeightInternal', 
+                                      #{"height" => 3, "tx_objects" => true}))).
 
 
 -endif.
