@@ -18,7 +18,7 @@ request(BaseUri, OperationId, Params) ->
     request(BaseUri, Method, OperationId, Params, [], HTTPOptions, []).
 
 request(BaseUri, get, OperationId, Params, Header, HTTPOptions, Options) ->
-    #{path := Endpoint} = maps:get(get, endpoints:operation(OperationId)),
+    Endpoint = endpoints:path(get, OperationId, Params),
     URL = binary_to_list(
             iolist_to_binary(
               [BaseUri, Endpoint, encode_get_params(Params)])),
@@ -26,7 +26,7 @@ request(BaseUri, get, OperationId, Params, Header, HTTPOptions, Options) ->
     R = httpc:request(get, {URL, Header}, HTTPOptions, Options),
     process_http_return(get, OperationId, R);
 request(BaseUri, post, OperationId, Params, Header, HTTPOptions, Options) ->
-    #{path := Endpoint} = maps:get(post, endpoints:operation(OperationId)),
+    Endpoint = endpoints:path(post, OperationId, Params),
     URL = binary_to_list(iolist_to_binary([BaseUri, Endpoint])),
     {Type, Body} = case Params of
                        Map when is_map(Map) ->
