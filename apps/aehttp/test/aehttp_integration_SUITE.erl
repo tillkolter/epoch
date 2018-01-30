@@ -272,10 +272,12 @@ correct_ping(_Config) ->
 
 broken_pings(_Config) ->
     % no 'source'
-    {ok, 400, _} = post_ping(#{}),
+    Host = external_address(),
+    %% We send junk, no outgoing validation!
+    {ok, 400, _} = http_request(Host, post, "ping", #{}),
     % no ping obj data
     Peer = unique_peer(),
-    {ok, 400, _} = post_ping(#{<<"source">> => Peer}),
+    {ok, 400, _} = http_request(Host, post, "ping", #{<<"source">> => Peer}),
     PingObj = rpc(aec_sync, local_ping_object, []),
     % wrong genesis hash
     Peer1 = unique_peer(),
@@ -1561,15 +1563,15 @@ ws_oracles(_Config) ->
 
 get_top() ->
     Host = external_address(),
-    http_request(Host, get, "top", []).
+    aeu_http_client:request(Host, 'GetTop', []).
 
 post_ping(Body) ->
     Host = external_address(),
-    http_request(Host, post, "ping", Body).
+    aeu_http_client:request(Host, 'Ping', Body).
 
 get_block_by_height(Height) ->
     Host = external_address(),
-    http_request(Host, get, "block-by-height", [{height, Height}]).
+    aeu_http_client:request(Host, 'GetBlockByHeight', [{height, Height}]).
 
 get_block_by_hash(Hash) ->
     Host = external_address(),
