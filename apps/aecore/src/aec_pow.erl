@@ -89,11 +89,11 @@
 %%% Behaviour
 %%%=============================================================================
 
--callback generate(Data :: aec_sha256:hashable(), Difficulty :: aec_pow:sci_int(),
+-callback generate(Data :: aec_hash:hashable(), Difficulty :: aec_pow:sci_int(),
                    Nonce :: aec_pow:nonce()) ->
     aec_pow:pow_result().
 
--callback verify(Data :: aec_sha256:hashable(), Nonce :: aec_pow:nonce(),
+-callback verify(Data :: aec_hash:hashable(), Nonce :: aec_pow:nonce(),
                  Evd :: aec_pow:pow_evidence(), Difficulty :: aec_pow:sci_int()) ->
     boolean().
 

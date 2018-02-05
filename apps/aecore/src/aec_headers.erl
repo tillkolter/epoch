@@ -170,7 +170,7 @@ serialize_for_hash(H) ->
 -spec hash_header(header()) -> {ok, block_header_hash()}.
 hash_header(H) ->
     BinaryH = serialize_for_hash(H),
-    {ok, aec_sha256:hash(BinaryH)}.
+    {ok, aec_hash:hash(header, BinaryH)}.
 
 serialize_pow_evidence_for_hash(Ev) ->
    << <<E:32>> || E <- serialize_pow_evidence(Ev) >>.

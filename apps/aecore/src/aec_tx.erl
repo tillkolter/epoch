@@ -113,7 +113,7 @@ calculate_total_fee(SignedTxs) ->
 
 -spec hash_tx(tx()) -> tx_hash().
 hash_tx(Tx) ->
-    aec_sha256:hash(serialize_to_binary(Tx)).
+    aec_hash:hash(tx, serialize_to_binary(Tx)).
 
 accounts(Tx) ->
     Mod = aec_tx_dispatcher:handler(Tx),

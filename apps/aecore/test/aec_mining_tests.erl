@@ -21,7 +21,7 @@
                     107,188,126,242,98,36,211,79,105,50,16,124,227,93,228,142,83,163,126,167,206>>).
 
 mine_block_test_() ->
-    PoWModules = [aec_pow_sha256, aec_pow_cuckoo],
+    PoWModules = [aec_pow_blake2s, aec_pow_cuckoo],
     [{foreach,
       fun() -> setup(PoWMod) end,
       fun(_) -> cleanup(unused_arg, PoWMod) end,
@@ -148,6 +148,8 @@ setup(PoWMod) ->
             aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
             ok = application:ensure_started(erlexec);
         aec_pow_sha256 ->
+            ok;
+        aec_pow_blake2s ->
             ok
     end,
     application:start(crypto),
@@ -197,6 +199,8 @@ cleanup(_, PoWMod) ->
         aec_pow_cuckoo ->
             ok = meck:unload(aeu_env);
         aec_pow_sha256 ->
+            ok;
+        aec_pow_blake2s ->
             ok
     end.
 
